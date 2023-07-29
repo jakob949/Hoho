@@ -35,7 +35,7 @@ def write_splits_to_file(splits, base_file_path):
 
 # Main function
 def main():
-    filename = "dataset_large_US_tech.txt"
+    filename = "dataset_large_US_tech_rounded.txt"
     base_file_path = "dataset_large_US_tech"
     n_splits = 4
     labels, features = read_data(filename)
