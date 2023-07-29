@@ -84,7 +84,7 @@ t5_model.to(device)
 train_dataset = Dataset("dataset_large_US_tech_split1_train.txt", t5_tokenizer)
 test_dataset = Dataset("dataset_large_US_tech_split1_test.txt", t5_tokenizer)
 
-batch_size_train = 7
+batch_size_train = 3
 train_loader = DataLoader(train_dataset, batch_size=batch_size_train, shuffle=True)
 test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
 
