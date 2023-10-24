@@ -45,6 +45,8 @@ deck = np.array(['14H','02H','03H','04H','05H','06H','07H','08H','09H','10H','11
                 '14S','02S','03S','04S','05S','06S','07S','08S','09S','10S','11S','12S','13S',
                 '14C','02C','03C','04C','05C','06C','07C','08C','09C','10C','11C','12C','13C'])
 
+rank_dict = {'02': 2, '03': 3, '04': 4, '05': 5, '06': 6, '07': 7, '08': 8, '09': 9, '10': 10, '11': 11, '12': 12,
+             '13': 13, '14': 14}
 
 def give_cards_start(num_of_players=4, deck=deck):
     """
@@ -132,12 +134,9 @@ def manage_and_create_side_pots(game, players):
 
         game.side_pots.append({"amount": side_pot, "players": players_who_can_win_the_side_pot})
 
-# Define the rank of each card, higher value means higher rank
-rank_dict = {'02': 2, '03': 3, '04': 4, '05': 5, '06': 6, '07': 7, '08': 8, '09': 9, '10': 10, '11': 11, '12': 12,
-             '13': 13, '14': 14}
-
 
 # Function to evaluate a single 5-card poker hand
+# Updating the evaluate_hand function to return the highest card not part of the rank determining cards
 def evaluate_hand(hand):
     ranks = [rank_dict[card[:-1]] for card in hand]
     suits = [card[-1] for card in hand]
@@ -152,38 +151,61 @@ def evaluate_hand(hand):
     # Check for straight (5 consecutive ranks)
     sorted_ranks = sorted(list(set(ranks)))
     straight = len(sorted_ranks) == 5 and sorted_ranks[-1] - sorted_ranks[0] == 4
+
+    remaining_cards = sorted(ranks)
     # Determine hand rank
     if flush and straight:
-        return 8, sorted_ranks[-1]  # Straight flush
+        remaining_cards.remove(sorted_ranks[-1])
+        return 8, sorted_ranks[-1], max(remaining_cards)  # Straight flush
     elif 4 in rank_count.values():
-        return 7, max(rank for rank, count in rank_count.items() if count == 4)  # Four of a kind
+        four_kind_rank = max(rank for rank, count in rank_count.items() if count == 4)
+        remaining_cards = [r for r in remaining_cards if r != four_kind_rank]
+        return 7, four_kind_rank, max(remaining_cards)  # Four of a kind
     elif 3 in rank_count.values() and 2 in rank_count.values():
-        return 6, max(rank for rank, count in rank_count.items() if count == 3)  # Full house
+        three_kind_rank = max(rank for rank, count in rank_count.items() if count == 3)
+        remaining_cards = [r for r in remaining_cards if r != three_kind_rank]
+        return 6, three_kind_rank, max(remaining_cards)  # Full house
     elif flush:
-        return 5, sorted_ranks[-1]  # Flush
+        remaining_cards.remove(sorted_ranks[-1])
+        return 5, sorted_ranks[-1], max(remaining_cards)  # Flush
     elif straight:
-        return 4, sorted_ranks[-1]  # Straight
+        remaining_cards.remove(sorted_ranks[-1])
+        return 4, sorted_ranks[-1], max(remaining_cards)  # Straight
     elif 3 in rank_count.values():
-        return 3, max(rank for rank, count in rank_count.items() if count == 3)  # Three of a kind
+        three_kind_rank = max(rank for rank, count in rank_count.items() if count == 3)
+        remaining_cards = [r for r in remaining_cards if r != three_kind_rank]
+        return 3, three_kind_rank, max(remaining_cards)  # Three of a kind
     elif len([rank for rank, count in rank_count.items() if count == 2]) == 2:
-        return 2, max(rank for rank, count in rank_count.items() if count == 2)  # Two pair
+        pair_rank = max(rank for rank, count in rank_count.items() if count == 2)
+        remaining_cards = [r for r in remaining_cards if r != pair_rank]
+        return 2, pair_rank, max(remaining_cards)  # Two pair
     elif 2 in rank_count.values():
-        return 1, max(rank for rank, count in rank_count.items() if count == 2)  # One pair
+        pair_rank = max(rank for rank, count in rank_count.items() if count == 2)
+        remaining_cards = [r for r in remaining_cards if r != pair_rank]
+        return 1, pair_rank, max(remaining_cards)  # One pair
     else:
-        return 0, sorted_ranks[-1]  # High card
+        return 0, sorted_ranks[-1], max(sorted(ranks[:-1]))  # High card
 
-def evaluate_hands(hands, table):
+
+
+def evaluate_hands(game):
+    table = game.table
+    players = game.players
+    hands = [(player.hand, player.player_id) for player in players if not player.fold]
+
     best_hand_value = (-1, -1)
     best_hand = None
     index_for_best_hand = None
-    for i, hand in enumerate(hands):
+    for i, hand_and_id in enumerate(hands):
+        hand = hand_and_id[0]
+        player_id = hand_and_id[1]
         # Generate all possible 5-card hands from the player's hand and the table
         possible_hands = list(combinations(hand + table, 5))
         # Evaluate each possible hand and keep track of the best one
         for possible_hand in possible_hands:
             hand_value = evaluate_hand(possible_hand)
             if hand_value > best_hand_value:
-                index_for_best_hand = i
+                index_for_best_hand = player_id
                 best_hand_value = hand_value
                 best_hand = possible_hand
     return best_hand, best_hand_value, hands[index_for_best_hand]
@@ -321,7 +343,7 @@ def ask_for_bets(players, game, current_bet=0, before_flop=False, big_blind=20):
     return
 
 # Initialize players
-num_of_players = 5
+num_of_players = 7
 players = [Player(player_id=i, stack=((i+1)*1000)) for i in range(num_of_players)]
 
 # Set the first player as the dealer
@@ -365,45 +387,47 @@ for game_round in range(1):
     print(f"pot: {game.pot}")
     # flop
     deck, table = give_cards_table(deck, 3)
+    # add the list table to the game table, so that there it is not a list of lists
+
+    game.table = table
     print("The flop is: ", table)
-    player = game.players
+
     # Ask for bets
     current_bet = ask_for_bets(players, game, current_bet=0, before_flop=False, big_blind=big_blind)
     for player in players:
         print(f"Player {player.player_id}\tbet: {player.bet},\tstack: {player.stack},\tfolded: {player.fold},\tall-in: {player.all_in}")
     print(f"sub pot: {game.side_pots}")
     print(f"pot: {game.pot}")
-    #
-    #
-    # # Print player info
-    # for player in players:
-    #     print(player)
-    # # turn
-    # deck, table = give_cards_table(deck, 1)
-    # print("The turn is: ", table)
-    # player = game.players
-    # # Ask for bets
-    # current_bet = ask_for_bets(players, game, current_bet=0, before_flop=False, big_blind=big_blind)
-    #
-    #
-    #
-    # # Print player info
-    # for player in players:
-    #     print(player)
-    # # river
-    # deck, table = give_cards_table(deck, 1)
-    # print("The river is: ", table)
-    # player = game.players
-    # # Ask for bets
-    # current_bet = ask_for_bets(players, game, current_bet=0, before_flop=False, big_blind=big_blind)
-    #
-    # # showdown
-    #
-    #
-    # # Print player info
-    # for player in players:
-    #     print(player)
 
+
+    # Print player info
+    for player in players:
+        print(f"Player {player.player_id}\tbet: {player.bet},\tstack: {player.stack},\tfolded: {player.fold},\tall-in: {player.all_in}")
+    # turn
+    deck, table = give_cards_table(deck, 1)
+    game.table.extend(table)
+    print("The turn is: ", game.table)
+    player = game.players
+    # Ask for bets
+    current_bet = ask_for_bets(players, game, current_bet=0, before_flop=False, big_blind=big_blind)
+
+
+    # Print player info
+    for player in players:
+        print(f"Player {player.player_id}\tbet: {player.bet},\tstack: {player.stack},\tfolded: {player.fold},\tall-in: {player.all_in}")
+    # river
+    deck, table = give_cards_table(deck, 1)
+    game.table.extend(table)
+    print("The river is: ", game.table)
+    player = game.players
+    # Ask for bets
+    current_bet = ask_for_bets(players, game, current_bet=0, before_flop=False, big_blind=big_blind)
+
+
+    best_hand, best_hand_value, best = evaluate_hands(game)
+    print(f"Best hand: {best_hand}, value: {best_hand_value}, player: {best}")
+
+    break
     print("----")
 
 
